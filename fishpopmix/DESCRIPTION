@@ -1,0 +1,25 @@
+Package: fishpopmix
+Type: Package
+Title: Functions to analyse mixtures of fish populations
+Version: 0.0.1
+Date: 2024-03-07
+Authors@R: person(c("Christoffer","Moesgaard"), "Albertsen",
+	   email = "cmoe@aqua.dtu.dk", role = c("aut", "cre"),
+	   comment = c(ORCID = "0000-0003-0088-4363"))
+Author: Christoffer Moesgaard Albertsen [aut, cre]
+Maintainer: Christoffer Moesgaard Albertsen <cmoe@aqua.dtu.dk>
+Description: Functions to analyse mixtures of fish populations from genotype, otolith, morphometric, and biological data.
+License: GPL-2
+Copyright: Technical University of Denmark
+Depends: R, RTMB
+Imports: RTMB,
+	 TMB,
+	 Matrix
+LinkingTo: RcppEigen,
+	   TMB
+URL: https://github.com/calbertsen/fishpopmix
+LazyData: TRUE
+Encoding: UTF-8
+BugReports: https://github.com/calbertsen/fishpopmix/issues
+ByteCompile: false
+RoxygenNote: 7.2.3
