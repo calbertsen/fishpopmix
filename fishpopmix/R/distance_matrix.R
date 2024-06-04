@@ -48,11 +48,14 @@ genotype_distance_D <- function(alleleFrequencies){
     ##AL <- empirical_allele_frequencies(genotypes, attr(genotypes,"population"))$Population
     AL <- alleleFrequencies
     D <- outer(seq_along(AL),seq_along(AL), Vectorize(function(i,j) {
-        X <- AL[[i]][-1,,drop=FALSE]
-        Y <- AL[[j]][-1,,drop=FALSE]
-        jx <- colSums(X^2)
-        jy <- colSums(Y^2)
-        jxy <- colSums(X*Y)
+        X <- AL[[i]] #[-1,,drop=FALSE]
+        Y <- AL[[j]] #[-1,,drop=FALSE]
+        ##jx <- colSums(X^2)
+        jx <- sapply(X,function(x) sum(x[-1]^2))
+        ##jy <- colSums(Y^2)
+        jy <- sapply(Y,function(x) sum(x[-1]^2))
+        ##jxy <- colSums(X*Y)
+        jxy <- sapply(seq_along(X), function(l) sum(X[[l]][-1] * Y[[l]][-1]))
         allNum <- !is.na(jx) & !is.na(jy) & !is.na(jxy)
         Jx <- mean(jx[allNum])
         Jy <- mean(jy[allNum])
@@ -61,38 +64,77 @@ genotype_distance_D <- function(alleleFrequencies){
         ##mean(-log(jxy/sqrt(jx*jy)), na.rm=TRUE)
     }))
     attr(D, "population") <- names(AL)    
-    attr(D,"type") <- "D"
+    attr(D,"type") <- expression(D[Nei])
     class(D) <- "genotype_distance"
     D
 }
 
 ## Roger's distance 1972
 genotype_distance_DR <- function(alleleFrequencies){
-    ##AL <- empirical_allele_frequencies(genotypes, attr(genotypes,"population"))$Population
     AL <- alleleFrequencies
     D <- outer(seq_along(AL),seq_along(AL), Vectorize(function(i,j) {
         X <- AL[[i]]#[-1,,drop=FALSE]
         Y <- AL[[j]]#[-1,,drop=FALSE]
-        lociUse <- apply(X,2,function(x) all(!is.na(x))) & apply(Y,2,function(x) all(!is.na(x)))
-        mean(sqrt(0.5 * rowSums(X[,lociUse,drop=FALSE] - Y[,lociUse,drop=FALSE])^2))
+        v <- sapply(seq_along(X), function(l){
+            p1 <- X[[l]]
+            p2 <- Y[[l]]
+            if(any(is.na(p1)) || any(is.na(p1)))
+                return(NA)
+            sqrt(sum((p1-p2)^2) / attr(X,"ploidy"))
+        })
+        mean(v, na.rm = TRUE)
     }))
     attr(D, "population") <- names(AL)    
-    attr(D,"type") <- "DR"
+    attr(D,"type") <- expression(D[Roger])
     class(D) <- "genotype_distance"
     D
 }
 
-## 
+## B. S. Weir, C. Clark Cockerham (1984) DOI: 10.2307/2408641. Implementaiton of theta[w]
 genotype_distance_Theta <- function(alleleFrequencies){
-    ##AL <- empirical_allele_frequencies(genotypes, attr(genotypes,"population"))$Population
+    ## Truncate negative to zero Roesti et al (2012)
     AL <- alleleFrequencies
     D <- outer(seq_along(AL),seq_along(AL), Vectorize(function(i,j) {
         X <- AL[[i]]#[-1,,drop=FALSE]
         Y <- AL[[j]]#[-1,,drop=FALSE]
-        lociUse <- apply(X,2,function(x) all(!is.na(x))) & apply(Y,2,function(x) all(!is.na(x)))
-        a <- 0.5 * colSums((X[,lociUse,drop=FALSE] - Y[,lociUse,drop=FALSE])^2)
-        apb <- 0.5 * (2 - colSums(X[,lociUse,drop=FALSE] * Y[,lociUse,drop=FALSE]))
-        mean(a / apb)
+        n1 <- attr(X,"samples")
+        if(is.na(n1)) n1 <- 1
+        n2 <- attr(Y,"samples")
+        if(is.na(n2)) n2 <- 1
+        n1 <- pmin(pmax(2,n1),1e6)
+        n2 <- pmin(pmax(2,n2),1e6)
+        r <- 2
+        nbar <- (n1 + n2) / r
+        nc <- (r*nbar - (n1^2 + n2^2)/(r*nbar)) /(r-1)      
+        numer <- sapply(seq_along(X), function(l) {
+            h1 <- attr(X[[l]],"heterozygote")[-1]
+            h2 <- attr(Y[[l]],"heterozygote")[-1]
+            p1 <- as.numeric(X[[l]])[-1]
+            p2 <- as.numeric(Y[[l]])[-1]
+            if(any(is.na(p1)) || any(is.na(p1)))
+                return(NA)
+            hbar <- (n1*h1 + n2*h2) / (r * nbar)
+            pbar <- (n1 * p1 + n2 * p2) / (r * nbar)
+            ssq <-  (n1 / nbar * (p1-pbar)^2 + n2 / nbar * (p2-pbar)^2) / (r -1)
+            aa <- nbar/nc * (ssq - (1/(nbar-1)) * (pbar*(1-pbar) - (r-1)/r * ssq - hbar/4))
+            sum(pmax(0,aa))
+        })
+        denom <- (sapply(seq_along(X), function(l) {
+            h1 <- attr(X[[l]],"heterozygote")[-1]
+            h2 <- attr(Y[[l]],"heterozygote")[-1]
+            p1 <- as.numeric(X[[l]])[-1]
+            p2 <- as.numeric(Y[[l]])[-1]
+            if(any(is.na(p1)) || any(is.na(p1)))
+                return(NA)
+            hbar <- (n1*h1 + n2*h2) / (r * nbar)
+            pbar <- (n1 * p1 + n2 * p2) / (r * nbar)
+            ssq <-  (n1 * (p1-pbar)^2 + n2 * (p2-pbar)^2) / ((r -1) * nbar)
+            aa <- nbar/nc * (ssq - (1/(nbar-1)) * (pbar*(1-pbar) - (r-1)/r * ssq - hbar/4))
+            bb <- nbar / (nbar - 1) * ( pbar * (1 - pbar) - (r-1)/r * ssq  - (2*nbar-1)/(4*nbar) * hbar )
+            cc <- hbar/2
+            sum(pmax(0,aa), na.rm=TRUE) + sum(pmax(0,bb), na.rm=TRUE) + sum(pmax(0,cc), na.rm=TRUE)
+        }))
+        sum(numer) / sum(denom)
     }))
     attr(D, "population") <- names(AL)    
     attr(D,"type") <- expression(theta)
@@ -107,12 +149,26 @@ genotype_distance_Gst <- function(alleleFrequencies){
     ##AL <- empirical_allele_frequencies(genotypes, attr(genotypes,"population"))$Population
     AL <- alleleFrequencies
     D <- outer(seq_along(AL),seq_along(AL), Vectorize(function(i,j) {
-        pi <- AL[[i]]#[-1,,drop=FALSE]
-        pj <- AL[[j]]#[-1,,drop=FALSE]
-        lociUse <- apply(pi,2,function(x) all(!is.na(x))) & apply(pj,2,function(x) all(!is.na(x)))
-        Hs <- 1 - (colSums(pi[,lociUse,drop=FALSE]^2) + colSums(pj[,lociUse,drop=FALSE]^2)) / 2
-        Ht <- 1 - colSums( ((pi[,lociUse,drop=FALSE]+pj[,lociUse,drop=FALSE])/2)^2 )
-        sum(Ht-Hs) / sum(Ht)
+        ## G[ST] = (H[T] - H[S]) / H[T]
+        X <- AL[[i]]#[-1,,drop=FALSE]
+        Y <- AL[[j]]#[-1,,drop=FALSE]
+        Hs <- sapply(seq_along(X), function(l){
+            p1 <- as.numeric(X[[l]])
+            p2 <- as.numeric(Y[[l]])
+            if(any(is.na(p1)) || any(is.na(p1)))
+                return(NA)
+            1 - sum(p1^2 + p2^2) / 2
+        })
+        Ht <- sapply(seq_along(X), function(l){
+            p1 <- as.numeric(X[[l]])
+            p2 <- as.numeric(Y[[l]])
+            pbar <- (p1 + p2) / 2
+            if(any(is.na(p1)) || any(is.na(p1)))
+                return(NA)
+            ps <- (p1+p2)/2
+            1 - sum(ps^2)
+        })
+        sum(Ht-Hs,na.rm=TRUE) / sum(Ht,na.rm=TRUE)
     }))
     attr(D, "population") <- names(AL)    
     attr(D,"type") <- expression(G[st])
@@ -130,9 +186,14 @@ genotype_distance_Chord <- function(alleleFrequencies){
     D <- outer(seq_along(AL),seq_along(AL), Vectorize(function(i,j) {
         X <- AL[[i]]#[-1,,drop=FALSE]
         Y <- AL[[j]]#[-1,,drop=FALSE]
-        lociUse <- apply(X,2,function(x) all(!is.na(x))) & apply(Y,2,function(x) all(!is.na(x)))
-        cosTheta <- colSums(sqrt(X[,lociUse,drop=FALSE]*Y[,lociUse,drop=FALSE])) %% (pi/2)
-        sqrt(sum(2 * (1 - cosTheta)))
+        cosTheta <- sapply(seq_along(X), function(l){
+            p1 <- X[[l]]
+            p2 <- Y[[l]]
+            if(any(is.na(p1)) || any(is.na(p1)))
+                return(NA)
+            sum(sqrt(p1*p2))
+        })
+        sqrt(sum(2 * (1 - cosTheta), na.rm = TRUE))
     }))
     attr(D, "population") <- names(AL)    
     attr(D,"type") <- "Chord distance"
@@ -148,8 +209,13 @@ genotype_distance_ChordTime <- function(alleleFrequencies){
     D <- outer(seq_along(AL),seq_along(AL), Vectorize(function(i,j) {
         X <- AL[[i]]#[-1,,drop=FALSE]
         Y <- AL[[j]]#[-1,,drop=FALSE]
-        lociUse <- apply(X,2,function(x) all(!is.na(x))) & apply(Y,2,function(x) all(!is.na(x)))
-        cosTheta <- colSums(sqrt(X[,lociUse,drop=FALSE]*Y[,lociUse,drop=FALSE])) %% (pi/2)
+         cosTheta <- sapply(seq_along(X), function(l){
+            p1 <- X[[l]]
+            p2 <- Y[[l]]
+            if(any(is.na(p1)) || any(is.na(p1)))
+                return(NA)
+            sum(sqrt(p1*p2))
+        })
         f <- 4 * sum(1-cosTheta) / (sum(lociUse) * (nrow(X)-1))
         -2 * log(1 - f)
     }))
@@ -163,12 +229,18 @@ genotype_distance_ChordTime <- function(alleleFrequencies){
 genotype_distance_Euclid <- function(alleleFrequencies){
     ##AL <- empirical_allele_frequencies(genotypes, attr(genotypes,"population"))$Population
     AL <- alleleFrequencies
-    D <- outer(seq_along(AL),seq_along(AL), Vectorize(function(i,j) {
+      D <- outer(seq_along(AL),seq_along(AL), Vectorize(function(i,j) {
         X <- AL[[i]]#[-1,,drop=FALSE]
         Y <- AL[[j]]#[-1,,drop=FALSE]
-        lociUse <- apply(X,2,function(x) all(!is.na(x))) & apply(Y,2,function(x) all(!is.na(x)))
-        sqrt(sum((X[,lociUse,drop=FALSE]-Y[,lociUse,drop=FALSE])^2))
-    }))
+        v <- sapply(seq_along(X), function(l){
+            p1 <- X[[l]]
+            p2 <- Y[[l]]
+            if(any(is.na(p1)) || any(is.na(p1)))
+                return(NA)
+            sum((p1-p2)^2)
+        })
+        sum(sqrt(v), na.rm = TRUE)
+    }))   
     attr(D, "population") <- names(AL)    
     attr(D,"type") <- "Euclidian distance"
     class(D) <- "genotype_distance"
@@ -364,7 +436,7 @@ pcoa <- function(D){
 
 ##' @method plot genotype_distance
 ##' @export
-plot.genotype_distance <- function(D, type = c("cladogram","dendrogram","MDS","PCoA"), treeType = c("nj_root","upgma"), horizontal=TRUE, plot = TRUE, point_cex = 1.5, point_pch = 16, lwd = 5, legend.pos="topright", text_col = "black", axes = FALSE, xlab,...){
+plot.genotype_distance <- function(D, type = c("cladogram","dendrogram","MDS","PCoA"), treeType = c("nj_root","upgma"), horizontal=TRUE, plot = TRUE, point_cex = 1.5, point_pch = 16, lwd = 5, legend.pos="topright", text_col = "black",text_cex=1,text_font=1, text_srt = ifelse(horizontal,0,90), text_adj = if(horizontal){NULL}else{1.25},text_pos = if(horizontal){4}else{NULL}, axes = FALSE, xlab,...){
     type <- match.arg(type)
     treeType <- match.arg(treeType)
     if(type == "cladogram" || type == "dendrogram"){        
@@ -377,12 +449,26 @@ plot.genotype_distance <- function(D, type = c("cladogram","dendrogram","MDS","P
         x2 <- ifelse(horizontal,0,1)#usr[2] - 0.05 * diff(usr[1:2])
         y1 <- 0#usr[3] + 0.05 * diff(usr[3:4])
         y2 <- 1#usr[4] - 0.05 * diff(usr[3:4])
-        par(usr = c(x1-0.1,x2+0.1,y1-0.1,y2+0.1))
+
         if(treeType == "upgma"){
             tree <- buildTree_upgma(D)
         }else if(treeType == "nj_root"){
             tree <- buildTree_nj(D,TRUE)
         }
+
+        if(type %in% c("cladogram","dendrogram")){
+            if(horizontal){
+                wx <- max(-tree$nodeY) + max(strwidth(tree$names,cex=text_cex,font=text_font)*1.1)
+                hx <- 0
+            }else{
+                wx <- 0
+                hx <- min(tree$nodeY) - max(strwidth(tree$names,cex=text_cex,font=text_font)*1.1)
+            }
+        }else{
+            wx <- hx <- 0
+        }
+        
+        par(usr = c(x1-0.1,pmax(x2,wx)+0.1,pmin(y1,hx)-0.1,y2+0.1))
         if(horizontal){
             tmpY <- tree$nodeY
             tmpX <- tree$nodeX
@@ -409,7 +495,7 @@ plot.genotype_distance <- function(D, type = c("cladogram","dendrogram","MDS","P
                         segments(tree$nodeX[k],tree$nodeY[k],tree$nodeX[i],tree$nodeY[i], lwd = lwd)
                     }
                 }
-                lapply(seq_along(tree$names), function(i) text(tree$nodeX[tree$isLeaf[i]],tree$nodeY[tree$isLeaf[i]],tree$names[[i]],pos=ifelse(horizontal,4,1),font=2,cex=1, col = text_col[(i-1)%%length(text_col)+1]))
+                lapply(seq_along(tree$names), function(i) text(tree$nodeX[tree$isLeaf[i]],tree$nodeY[tree$isLeaf[i]],tree$names[[i]],pos=text_pos,font=2,cex=1, col = text_col[(i-1)%%length(text_col)+1], srt = text_srt,adj=text_adj))
                 ## prettyNum(unique(branchLength))                                
             }else if(type == "dendrogram"){
                 points(tree$nodeX,tree$nodeY, col = "black", cex = point_cex, pch = point_pch)
@@ -430,11 +516,12 @@ plot.genotype_distance <- function(D, type = c("cladogram","dendrogram","MDS","P
                          }
                      }
                  }
-                 lapply(seq_along(tree$names), function(i) text(tree$nodeX[tree$isLeaf[i]],tree$nodeY[tree$isLeaf[i]],tree$names[[i]],pos=ifelse(horizontal,4,1),font=2,cex=1, col = text_col[(i-1)%%length(text_col)+1]))
+                 lapply(seq_along(tree$names), function(i) text(tree$nodeX[tree$isLeaf[i]],tree$nodeY[tree$isLeaf[i]],tree$names[[i]],pos=text_pos,font=text_font,cex=text_cex, col = text_col[(i-1)%%length(text_col)+1], srt = text_srt,adj=text_adj))
             }
-            tt <- axisTicks(par("usr")[1:2] * max(tree$branchLength),FALSE)
-            if(axes)
+            tt <- axisTicks((par("usr")[1:2]-c(0,wx)) * max(tree$branchLength),FALSE)
+            if(axes){
                 axis(ifelse(horizontal,1,2), tt / max(tree$branchLength),ifelse(horizontal,-1,1) * tt, lwd = 5, font = 2)
+            }
             if(missing(xlab))
                xlab = tree$distanceType
             mtext(xlab,ifelse(horizontal,1,2),line=3,font=2)
@@ -457,11 +544,13 @@ plot.genotype_distance <- function(D, type = c("cladogram","dendrogram","MDS","P
 ##' @method print genotype_distance
 ##' @export
 print.genotype_distance <- function(x,...){
-    tab <- as.matrix(x)
+    x2 <- x
+    diag(x2) <- 0
+    tab <- as.matrix(x2)
     rownames(tab) <- colnames(tab) <- attr(x,"population")
     tab[upper.tri(tab)] <- NA
     cat(paste("Genetic distance metric:",attr(x,"type")),"\n\n")
-    xx <- format(unclass(x), digits = 2, justify = "right")
+    xx <- format(unclass(x2), digits = 2, justify = "right")
     nn <- max(nchar(xx))
     print.table(tab,digits = 2, zero.print = paste(rep("-",nn),collapse=""))
 }

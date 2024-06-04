@@ -391,25 +391,25 @@ namespace rsam_pnorm {
 
   template<class Type>
   Type pnorm5(Type x, Type mu, Type sigma, int lower_tail, int log_p){
-    CppAD::vector<Type> tx(4);
+    vector<Type> tx(4);
     tx[0] = (x-mu) / sigma;
     // tx[1] = mu;
     // tx[2] = sigma;
     tx[1] = (Type)lower_tail;
     tx[2] = (Type)log_p;
     tx[3] = 0; // extra argument for derivative order
-    Type res = pnorm_atomic::pnorm1_2x(tx)[0];
+    Type res = pnorm_atomic::pnorm1_2x(CppAD::vector<Type>(tx))[0];
     return res;
   }
 
 
   template<class Type>
   Type log_ipnorm(Type x, Type y, Type mu, Type sigma){
-    CppAD::vector<Type> tx(4);
+    vector<Type> tx(3);
     tx[0] = (x-mu) / sigma;
     tx[1] = (y-mu) / sigma;
     tx[2] = 0; // extra argument for derivative order
-    Type res = pnorm_atomic::log_ipnorm1_2x(tx)[0];
+    Type res = pnorm_atomic::log_ipnorm1_2x(CppAD::vector<Type>(tx))[0];
     return res;
   }
 
@@ -421,9 +421,9 @@ namespace rsam_pde_schemes {
 
   namespace schemes_atomic {
 
-    template<class T>
-    T ps_raw (const T &Pf) {
-      T af = 0.0;
+    template<class Float>
+    Float ps_raw (Float Pf) {
+      Float af = 0.0;
       if(Pf > 10.0){
 	af = (Pf - 1.0) / Pf;
       }else if(Pf > 1e-6){
@@ -438,17 +438,17 @@ namespace rsam_pde_schemes {
       return af;
     }
   
-    TMB_BIND_ATOMIC(ps,
+    TMB_BIND_ATOMIC(ps0,
 		    1,
 		    ps_raw(x[0]) )
   }
 
   template<class Type>
   Type ps(Type x) {  
-    CppAD::vector<Type> tx(2);
+    vector<Type> tx(2);
     tx[0] = x;
     tx[1] = 0; // order
-    return schemes_atomic::ps(tx)[0];
+    return schemes_atomic::ps0(CppAD::vector<Type>(tx))[0];
   }
 
 }
@@ -457,10 +457,12 @@ namespace rsam_logspace {
 
   namespace logspace_atomic {
   
-    template<class T>
-    T logspace_add2_raw (const T &logx, const T &logy) {
+    template<class Float>
+    Float logspace_add2_raw (Float logx, Float logy) {
       // Was:
       //  fmax2 (logx, logy) + log1p (exp (-fabs (logx - logy)));
+      if(logx == R_NegInf && logy == R_NegInf)
+	return(R_NegInf);
       if(logx == R_NegInf)
 	return(logy);
       if(logy == R_NegInf)
@@ -475,8 +477,8 @@ namespace rsam_logspace {
 		    11,
 		    logspace_add2_raw(x[0], x[1]) )
 
-    template<class T>
-    T logspace_sub2_raw (const T &logx, const T &logy) {
+    template<class Float>
+    Float logspace_sub2_raw (Float logx, Float logy) {
       if(logx == logy)
 	return R_NegInf;
       if(logy == R_NegInf)
@@ -496,16 +498,18 @@ namespace rsam_logspace {
 
 
   template<class Type>
-  Type logspace_add2(Type logx, Type logy) {  
+  Type logspace_add2(Type logx, Type logy) {
+    if ( !CppAD::Variable(logx) && logx == Type(R_NegInf) && !CppAD::Variable(logy) && logy == Type(R_NegInf))
+      return Type(R_NegInf);
     if ( !CppAD::Variable(logx) && logx == Type(R_NegInf) )
       return logy;
     if ( !CppAD::Variable(logy) && logy == Type(R_NegInf) )
       return logx;
-    CppAD::vector<Type> tx(3);
+    vector<Type> tx(3);
     tx[0] = logx;
     tx[1] = logy;
     tx[2] = 0; // order
-    return logspace_atomic::logspace_add2(tx)[0];
+    return logspace_atomic::logspace_add2(CppAD::vector<Type>(tx))[0];
   }
 
   
@@ -513,11 +517,11 @@ namespace rsam_logspace {
   Type logspace_sub2(Type logx, Type logy) {
     if ( !CppAD::Variable(logy) && logy == Type(R_NegInf) )
       return logx;
-    CppAD::vector<Type> tx(3);
+    vector<Type> tx(3);
     tx[0] = logx;
     tx[1] = logy;
     tx[2] = 0; // order
-    return logspace_atomic::logspace_sub2(tx)[0];
+    return logspace_atomic::logspace_sub2(CppAD::vector<Type>(tx))[0];
   }
 
 }
@@ -528,8 +532,8 @@ namespace rsam_quantreg {
 
   namespace quantreg_atomic {
 
-    template<class T>
-    T quantreg_raw (const T &x, const T &tau) {
+    template<class Float>
+    Float quantreg_raw (Float x, Float tau) {
       if(x < 0)
 	return x * (tau - 1.0);
       return x * tau;
@@ -542,11 +546,11 @@ namespace rsam_quantreg {
 
   template<class Type>
   Type quantreg(Type x, Type tau) {  
-    CppAD::vector<Type> tx(3);
+    vector<Type> tx(3);
     tx[0] = x;
     tx[1] = tau;
     tx[2] = 0; // order
-    return quantreg_atomic::quantreg(tx)[0];
+    return quantreg_atomic::quantreg(CppAD::vector<Type>(tx))[0];
   }
 
 }
@@ -622,12 +626,18 @@ Type objective_function<Type>::operator() ()
 // #endif
 // }
 
+
 extern "C" {
+
+SEXP read_ped(SEXP file0, SEXP file1, SEXP nIndi0, SEXP nLoci0,
+	      SEXP hasFID, SEXP hasParents, SEXP hasSex, SEXP hasPheno,
+	      SEXP progress0, SEXP geno_NA);
   
 #define CALLDEF(name,n) {#name, (DL_FUNC) &name, n}
 
   static const R_CallMethodDef CallEntries[] = {
     TMB_CALLDEFS,
+    CALLDEF(read_ped,10),
     {NULL, NULL, 0}
   };
 

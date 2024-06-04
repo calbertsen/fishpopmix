@@ -5,9 +5,9 @@ na2 <- function(x, to){
 
 toAlleleMatrix <- function(G, giveNames = FALSE){
     if(is.numeric(G))
-        G <- sprintf("%06d",na2(G,0))
+        G <- sprintf("%06d",na2(G,0))    
     xx <- do.call("rbind",lapply(strsplit(G,""),function(x){
-        if(length(x) %in% c(4,6)){
+        if(length(x) %in% c(4,6)){            
             n <- length(x)
             v <- c(paste0(x[seq_len(n/2)],collapse=""),paste0(x[n/2 + seq_len(n/2)],collapse=""))
             return(sprintf("%03d",as.numeric(v)))
@@ -23,28 +23,167 @@ toAlleleMatrix <- function(G, giveNames = FALSE){
     lvls <- sort(unique(c("000",as.vector(xx))))
     if(giveNames)
         return(lvls[-1])
-    apply(matrix(as.numeric(factor(xx,levels=lvls))-1,ncol=2),1,function(x) as.numeric(table(factor(x,1:(length(lvls)-1)))))
+    r <- apply(matrix(as.numeric(factor(xx,levels=lvls))-1,ncol=2),1,function(x) as.numeric(table(factor(x,1:(length(lvls)-1)))))
+    rownames(r) <- lvls[-1]   
+    r
 }
 
 
-##' Prepare allele matrix for PCA analysis
-##'
-##' @param x output from \\link{read.gen}
-##' @param alleleMeans Mean allele frequencies to impute. Is calculated if missing.
-##' @return allele data for PCA analysis
-##' @author Christoffer Moesgaard Albertsen
-gen2PCA <- function(x, alleleMeans){
-    x2 <- apply(x,c(2,3),function(x) x/sum(x))
-    if(missing(alleleMeans))
-        alleleMeans <- apply(x2,1:2,mean, na.rm=TRUE)
-    md <- unique(which(is.nan(x2), arr.ind = TRUE)[,2:3])
-    for(i in seq_len(nrow(md))){
-        x2[,md[i,1],md[i,2]] <- alleleMeans[,md[i,1]]
+## S3 class: Genotype
+## names list of Locus
+## attr ploidy: ploidy of the individual
+##' @export
+##' @method `[[` Genotype
+`[[.Genotype` <- function(x,j,...){
+    if(missing(j)) return(x)
+    if(length(j) == 1){
+        y <- unclass(x)[[j]]
+        attr(y,"ploidy") <- attr(x,"plodiy")        
+        ## class(y) <- "Genotype"
+        return(y)
+    }        
+    y <- unclass(x)[j]
+    attr(y,"ploidy") <- attr(x,"ploidy")
+    class(y) <- "Genotype"
+    y
+}
+
+##' @export
+##' @method `[` Genotype
+`[.Genotype` <- function(x,i,j,...){
+    ## i: allele number
+    if(missing(i)){
+        y <- unclass(x)[j]
+        attr(y,"ploidy") <- attr(x,"ploidy")
+        class(y) <- "Genotype"
+        return(y)
     }
-    for(i in seq_len(dim(x2)[3]))
-        x2[,,i] <- x2[,,i] - alleleMeans
-    r <- x2[seq_len(dim(x2)[1]-1),,]
-    attr(r,"alleleMeans") <- alleleMeans
+    ## j: locus number
+    lapply(unclass(x)[j],function(y) y[i])   
+}
+##' @export
+##' @method print Genotype
+print.Genotype <- function(x,...){
+    isHomo <- sapply(x,function(y) any(y==attr(x,"ploidy")))
+    isMis <- sapply(x,function(y) sum(y) < attr(x,"ploidy"))
+    cat(sprintf("Genotype. Ploidy: %d. Loci: %d. Homozygous: %.1f%%. Missingness: %.1f%%.",attr(x,"ploidy"),length(x),sum(isHomo)/length(x)*100,sum(isMis)/length(x)*100),"\n")
+}
+
+num_allele <- function(x,...){
+    UseMethod("num_allele")
+}
+
+##' @export
+##' @method num_allele Genotype
+num_allele.Genotype <- function(x,...){
+    sapply(x,length)
+}
+
+##' @export
+##' @method num_allele gen
+num_allele.gen <- function(x,error_fun=warning,...){
+    r <- do.call("rbind",lapply(x,num_allele))
+    isOK <- apply(r,2,function(v) all(as.integer(v)==as.integer(mean(v))))
+    if(!all(isOK)) error_fun("Individuals have different number of alleles for the same locus.")
+    as.integer(apply(r,2,mean))
+}
+
+
+num_loci <- function(x,...){
+    UseMethod("num_loci")
+}
+
+##' @export
+##' @method num_loci Genotype
+num_loci.Genotype <- function(x,...){
+    length(x)
+}
+
+##' @export
+##' @method num_loci gen
+num_loci.gen <- function(x,error_fun=warning,...){
+    r <- do.call("rbind",lapply(x,num_loci))
+    isOK <- apply(r,2,function(v) all(as.integer(v)==as.integer(mean(v))))
+    if(!all(isOK)) error_fun("Individuals have different number of loci.")
+    as.integer(mean(r))
+}
+
+extract_locus <- function(x, l){
+    UseMethod("extract_locus")
+}
+
+##' @export
+##' @method extract_locus gen
+extract_locus.gen <- function(x, l){
+    r <- do.call("rbind",lapply(x,function(y) y[[l]]))
+    rownames(r) <- names(x)
+    r
+}
+
+get_ploidy <- function(x){
+    UseMethod("get_ploidy")
+}
+
+##' @export
+##' @method get_ploidy Genotype
+get_ploidy.Genotype <- function(x){
+    attr(x,"ploidy")
+}
+
+##' @export
+##' @method get_ploidy gen
+get_ploidy.gen <- function(x){
+    v <- sapply(x,get_ploidy)
+    table(v,dnn=NULL) / length(v)
+}
+
+
+
+## S3 class: gen
+## list of Genotype
+
+##' @method c gen
+##' @export
+c.gen <- function(..., dropLoci=FALSE){
+    x <- list(...)
+    pop <- do.call("c", lapply(x, function(y) attr(y,"population")))
+    res <- do.call("c",lapply(x,unclass))
+    class(res) <- "gen"
+    attr(res,"population") <- pop
+    ## attr(res,"alleleNames") <- attr(x[[1]],"alleleNames")
+    ## otherA <- setdiff(unique(sapply(x,function(y)names(attributes(y)))),c("dim","dimnames","class","population","alleleNames"))
+    ## for(aa in otherA){
+    ##     attr(res,aa) <- lapply(x,function(y) attr(y,aa))
+    ## }
+    res
+}
+
+##' @method `[[` gen
+##' @export
+`[[.gen` <- function(x, i, ...){
+    unclass(x)[[i]]
+}
+
+
+##' @method `[` gen
+##' @export
+`[.gen` <- function(x,i,j,k,...){
+    if(missing(i))
+        i <- seq_along(x)
+    if(missing(j) && missing(k)){
+        y <- unclass(x)[i]
+        class(y) <- c("gen")
+        attr(y,"population") <- attr(x,"population")[i]
+        return(y)
+    }
+    if(!missing(j) && missing(k))
+        r <- (lapply(x[i],function(y) y[j,]))
+    if(missing(j)&& !missing(k))
+        r <- (lapply(x[i],function(y) y[,k]))
+    if(!missing(j)&& !missing(k))
+        r <- (lapply(x[i],function(y) y[j,k]))
+    class(r) <- c("gen")
+    attr(r,"population") <- attr(x,"population")[i]
     r
 }
 
@@ -90,97 +229,38 @@ read_gen <- function(f, pop.names, sort.loci = FALSE, sort.individuals = FALSE, 
         ## Find number of columns
         cn <- tail(l[seq_len(popPlace[1]-1)],ncol(genoMat))
     }
-    alleleNames <- lapply(as.list(as.data.frame(genoMat, stringsAsFactors = FALSE)),toAlleleMatrix, giveNames = TRUE)
-    Nallele <- sapply(alleleNames, length)
-    if(!all(Nallele == Nallele[1])){
-        if(is.na(NAlleleKeep))
-            NAlleleKeep <- as.numeric(names(which.max(table(Nallele))))
-        aIndx <- unname(which(Nallele == NAlleleKeep))
-        warning(sprintf("Only loci with the same number of alleles are currently supported. %s %s removed.",paste(cn[Nallele != NAlleleKeep],collapse=", "),ifelse(sum(Nallele != NAlleleKeep)==1,"was","were")))
-        ## Remove
-        cn <- cn[aIndx]
-        genoMat <- genoMat[,aIndx,drop=FALSE]
-        alleleNames <- alleleNames[aIndx]
-        Nallele <- Nallele[aIndx]
-        dataList <- dataList[aIndx]
-    }
-    names(alleleNames) <- cn
-    dimnames(genoMat) <- list(indiId, cn)
-    aMat <- aperm(simplify2array(lapply(as.list(as.data.frame(genoMat, stringsAsFactors = FALSE)),toAlleleMatrix)),c(1,3,2))
-    dimnames(aMat) <- list(NULL, cn, indiId)
-    if(sort.loci){
-        aMat <- aMat[,order(cn),,drop=FALSE]
-        alleleNames <- alleleNames[order(cn)]
-        genoMat <- genoMat[,order(cn),drop=FALSE]
-    }
-    if(sort.individuals){
-        aMat <- aMat[,,order(indiId),drop=FALSE]
-        genoMat <- genoMat[order(indiId),,drop=FALSE]
-        inPop <- inPop[order(indiId)]
-    }
-    class(aMat) <- c("gen","array")
-    attr(aMat,"population") <- inPop
-    attr(aMat,"alleleNames") <- alleleNames
+    ##alleleNames <- lapply(as.list(as.data.frame(genoMat, stringsAsFactors = FALSE)),toAlleleMatrix, giveNames = TRUE)
+    alleleMatList <- lapply(as.list(as.data.frame(genoMat, stringsAsFactors = FALSE)),toAlleleMatrix)
+    names(alleleMatList) <- cn    
+    Nallele <- sapply(alleleMatList, nrow)
+    Gchar <- apply(genoMat,1,function(x) max(nchar(x)))
+    ploidy <- unname(sapply(as.character(Gchar),function(x)switch(x,`2`=1,`3`=1,`4`=2,`6`=2,NA)))
+    res <- lapply(seq_along(indiId),function(indi){
+        r <- lapply(alleleMatList,function(y) y[,indi])
+        names(r) <- cn
+        class(r) <- "Genotype"
+        attr(r,"ploidy") <- ploidy[indi]
+        r
+    })
+    names(res) <- indiId
+   
+    ## aMat <- aperm(simplify2array(lapply(as.list(as.data.frame(genoMat, stringsAsFactors = FALSE)),toAlleleMatrix)),c(1,3,2))
+    ## dimnames(aMat) <- list(NULL, cn, indiId)
+    ## if(sort.loci){
+    ##     aMat <- aMat[,order(cn),,drop=FALSE]
+    ##     alleleNames <- alleleNames[order(cn)]
+    ##     genoMat <- genoMat[,order(cn),drop=FALSE]
+    ## }
+    ## if(sort.individuals){
+    ##     aMat <- aMat[,,order(indiId),drop=FALSE]
+    ##     genoMat <- genoMat[order(indiId),,drop=FALSE]
+    ##     inPop <- inPop[order(indiId)]
+    ## }
+    class(res) <- "gen"
+    attr(res,"population") <- inPop
+    ## attr(aMat,"alleleNames") <- alleleNames
     ##attr(aMat,"genotypes") <- genoMat
-    aMat
-}
-
-gen2list <- function(x){
-    d <- dim(x)
-    dnm <- dimnames(x)
-    class(x) <- "array"
-    xL <- lapply(split(x, slice.index(x,3)), matrix, nrow = d[[1]], ncol = d[[2]], dimnames=dnm[1:2])
-    names(xL) <- dnm[[3]]
-    xL
-}
-
-##' @method c gen
-##' @export
-c.gen <- function(..., dropLoci=FALSE){
-    x <- list(...)
-    pop <- do.call("c", lapply(x, function(y) attr(y,"population")))
-    res <- simplify2array(do.call("c",lapply(x, gen2list)))
-    class(res) <- c("gen","array")
-    attr(res,"population") <- pop
-    attr(res,"alleleNames") <- attr(x[[1]],"alleleNames")
-    otherA <- setdiff(unique(sapply(x,function(y)names(attributes(y)))),c("dim","dimnames","class","population","alleleNames"))
-    for(aa in otherA){
-        attr(res,aa) <- lapply(x,function(y) attr(y,aa))
-    }
     res
-}
-
-##' @method `[[` gen
-##' @export
-`[[.gen` <- function(x, i, l, ...){
-    if(missing(l))
-        l <- seq_len(dim(x)[2])
-    class(x) <- "array"
-    y <- as.array(x)[,l,i,drop=FALSE]
-    class(y) <- c("gen","array")
-    attr(y,"population") <- attr(x,"population")[i]
-    attr(y,"alleleNames") <- attr(x,"alleleNames")
-    y
-}
-
-##' @method `[` gen
-##' @export
-`[.gen` <- function(x,i,j,k,...){    
-    y <- x
-    class(y) <- "array"
-    y <- y[i,j,k,drop=FALSE]
-    class(y) <- c("gen","array")
-    if(!missing(k)){
-        attr(y,"population") <- attr(x,"population")[k]
-    }else{
-        attr(y,"population") <- attr(x,"population")
-    }
-    if(!missing(i)){
-        attr(y,"alleleNames") <- attr(x,"alleleNames")[i]
-    }else{
-        attr(y,"alleleNames") <- attr(x,"alleleNames")
-    }
-    y    
 }
 
 write.gen <- function(x, file){

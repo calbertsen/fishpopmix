@@ -113,6 +113,10 @@ setMethod("logspace_sub", signature(x="advector",y="advector"), function(x,y){
 })
 
 logspace_add_num <- function(x,y){
+    if(x == -Inf)
+        return(y)
+    if(y == -Inf)
+        return(x)
     ifelse(x < y, y + log1p(exp(x-y)), x + log1p(exp(y-x)))
 }
 

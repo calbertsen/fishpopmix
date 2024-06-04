@@ -15,8 +15,9 @@ dmultinomGen <- function(x, size, prob, log) {
 
 rConwayMaxwellMultinomial <- function(n, size, p, nu){
     p <- p / sum(p)
-    possible <- do.call("expand.grid",lapply(seq_along(p), function(i) seq_len(size+1)-1))
-    possible <- possible[rowSums(possible)==size,]
+    possible <- do.call(rbind,nexcom(size,length(p)))
+    ## possible <- do.call("expand.grid",lapply(seq_along(p), function(i) seq_len(size+1)-1))
+    ## possible <- possible[rowSums(possible)==size,]
     getOne <- function(k, log = FALSE){
         if(log){
             return(nu * (lgamma(size+1) - sum(lgamma(k+1))) + sum(k * log(p)))
@@ -33,8 +34,9 @@ rConwayMaxwellMultinomial <- function(n, size, p, nu){
 
 dConwayMaxwellMultinomial <- function(x, size, p, nu, log = FALSE){
     p <- p / sum(p)
-    possible <- as.matrix(do.call("expand.grid",lapply(seq_along(p), function(i) seq_len(size+1)-1)))
-    possible <- possible[rowSums(possible)==size,]
+    possible <- do.call(rbind,nexcom(size,length(p)))
+    ## possible <- as.matrix(do.call("expand.grid",lapply(seq_along(p), function(i) seq_len(size+1)-1)))
+    ## possible <- possible[rowSums(possible)==size,]
     getOne <- function(k, log = FALSE){
         if(log){
             return(nu * (lgamma(size+1) - sum(lgamma(k+1))) + sum(k * log(p)))

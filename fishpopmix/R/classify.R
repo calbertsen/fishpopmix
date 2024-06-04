@@ -7,26 +7,27 @@ classify <- function(baseline, samples, prior, ...){
 ##' @export
 classify.alleleFrequencyList <- function(baseline, samples, prior, ...){
     alleleFrequencies <- baseline$Populations
-    isAllMissing <- lapply(alleleFrequencies,function(af) which(apply(af,2,function(x)any(is.na(x)))))  
-    genotypeList <- gen2list(samples) ##lapply(split(samples,slice.index(samples,3)),matrix,nrow=dim(samples)[1],ncol=dim(samples)[2])
+    isAllMissing <- lapply(alleleFrequencies, function(af) which(sapply(af,function(x) any(is.na(x)))))
     nPop <- length(alleleFrequencies)
-    nAllele <- dim(samples)[1]
-    nLoci <- dim(samples)[2]
-    nMixIndi <- dim(samples)[3]
+    nAllele <- num_allele(samples)
+    nLoci <- num_loci(samples)
+    nMixIndi <- length(samples)
     if(missing(prior))
         prior <- rep(1/nPop,nPop)
 
     ## Assign
-    r <- lapply(seq_along(genotypeList), function(i){ ## Over individuals
+    r <- lapply(seq_along(samples), function(i){ ## Over individuals
         ## P(Genotype | Population) * P(Population)
         lapply(seq_len(nPop), function(j){ ## Over populations
-            Reduce("+",lapply(setdiff(seq_len(nLoci),isAllMissing[[j]]), function(l){ ## Over loci                
-                dmultinom(genotypeList[[i]][,l],sum(genotypeList[[i]][,l]),alleleFrequencies[[j]][,l],log = TRUE)                    
+            Reduce("+",lapply(setdiff(seq_len(nLoci),isAllMissing[[j]]), function(l){ ## Over loci
+                if(any(is.na(alleleFrequencies[[j]][[l]])))
+                    return(0)
+                dmultinom(samples[[i]][[l]],sum(samples[[i]][[l]]),alleleFrequencies[[j]][[l]],log = TRUE)                    
             })) + log(prior)[j]
         })            
     })
     ## Likelihood
-    lli <- lapply(r,function(x) Reduce(logspace_add,x))
+    lli <- lapply(r,function(x) Reduce(logspace_add,x,init = -Inf))
     ## "Posterior"
     post <- exp(do.call(cbind,lapply(seq_along(r), function(i) simplify(r[[i]]) - lli[[i]])))
     class(post) <- "fit_posterior"
@@ -43,23 +44,23 @@ classify.alleleFrequencyList <- function(baseline, samples, prior, ...){
 ##' @method classify baseline_fit
 ##' @export
 classify.baseline_fit <- function(baseline, samples, prior, ...){
-    alleleFrequencies <- baseline$alleleFrequencies
-    isAllMissing <- lapply(alleleFrequencies,function(af) which(apply(af,2,function(x)any(is.na(x)))))  
-    alleleNu <- baseline$alleleNu
-    genotypeList <- gen2list(samples) #lapply(split(samples,slice.index(samples,3)),matrix,nrow=dim(samples)[1],ncol=dim(samples)[2])
+    alleleFrequencies <- baseline$alleleFrequencies$Populations
+    isAllMissing <- lapply(alleleFrequencies, function(af) which(sapply(af,function(x) any(is.na(x)))))
+    alleleNu <- baseline$alleleNu    
     nPop <- length(alleleFrequencies)
-    nAllele <- dim(samples)[1]
-    nLoci <- dim(samples)[2]
-    nMixIndi <- dim(samples)[3]
+    nAllele <- num_allele(samples)
+    nLoci <- num_loci(samples)
+    nMixIndi <- length(samples)
+
     if(missing(prior))
         prior <- rep(1/nPop,nPop)
     dGeno <- baseline$dGeno
 
-     r <- lapply(seq_along(genotypeList), function(i){ ## Over individuals
+     r <- lapply(seq_along(samples), function(i){ ## Over individuals
         ## P(Genotype | Population) * P(Population)
         lapply(seq_len(nPop), function(j){ ## Over populations
             Reduce("+",lapply(setdiff(seq_len(nLoci),isAllMissing[[j]]), function(l){ ## Over loci
-                dGeno(genotypeList[[i]][,l], alleleFrequencies[[j]][,l], alleleNu[j,l])
+                dGeno(samples[[i]][[l]], alleleFrequencies[[j]][[l]], alleleNu[j,l])
             })) + log(prior)[j]
         })            
     })
