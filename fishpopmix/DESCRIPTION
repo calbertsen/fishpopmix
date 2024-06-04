@@ -1,4 +1,4 @@
-gPackage: fishpopmix
+Package: fishpopmix
 Type: Package
 Title: Functions to analyse mixtures of fish populations
 Version: 0.0.3
