@@ -29,7 +29,7 @@ classify.alleleFrequencyList <- function(baseline, samples, prior, ...){
     ## Likelihood
     lli <- lapply(r,function(x) Reduce(logspace_add,x,init = -Inf))
     ## "Posterior"
-    post <- exp(do.call(cbind,lapply(seq_along(r), function(i) simplify(r[[i]]) - lli[[i]])))
+    post <- exp(do.call(cbind,lapply(seq_along(r), function(i) RTMBconvenience::simplify(r[[i]]) - lli[[i]])))
     class(post) <- "fit_posterior"
     attr(post,"sample") <- attr(samples, "population")
     attr(post,"groups") <- names(alleleFrequencies)
@@ -67,7 +67,7 @@ classify.baseline_fit <- function(baseline, samples, prior, ...){
     ## Likelihood
     lli <- lapply(r,function(x) Reduce(logspace_add,x))
     ## "Posterior"
-    post <- exp(do.call(cbind,lapply(seq_along(r), function(i) simplify(r[[i]]) - lli[[i]])))
+    post <- exp(do.call(cbind,lapply(seq_along(r), function(i) RTMBconvenience::simplify(r[[i]]) - lli[[i]])))
     class(post) <- "fit_posterior"
     attr(post,"sample") <- attr(samples, "population")
     attr(post,"groups") <- names(alleleFrequencies)

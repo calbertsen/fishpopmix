@@ -155,7 +155,8 @@ baseline_model <- function(genotypes, HWD = 0, HWD_density = c("CMM","DM")){
     class(afOut) <- "alleleFrequencyList"
     rownames(rp$alleleNu) <- levels(Population)
     colnames(rp$alleleNu) <- names(genotypes[[1]])
-    res <- list(alleleFrequencies = afOut,
+    res <- list(genotype = genotypes,
+                alleleFrequencies = afOut,
                 alleleNu = rp$alleleNu,
                 opt = opt,
                 obj = obj,

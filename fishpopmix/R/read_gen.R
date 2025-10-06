@@ -23,6 +23,11 @@ toAlleleMatrix <- function(G, giveNames = FALSE){
     lvls <- sort(unique(c("000",as.vector(xx))))
     if(giveNames)
         return(lvls[-1])
+    if(length(lvls) == 1){ ## Only missing
+        lvls <- c(lvls,"REF","ALT")
+    }else if(length(lvls) == 2){ ## All the same
+        lvls <- c(lvls,"ALT")
+    }
     r <- apply(matrix(as.numeric(factor(xx,levels=lvls))-1,ncol=2),1,function(x) as.numeric(table(factor(x,1:(length(lvls)-1)))))
     rownames(r) <- lvls[-1]   
     r
@@ -120,6 +125,31 @@ extract_locus.gen <- function(x, l){
     r
 }
 
+add_locus <- function(x, lname, aname, warn=TRUE){
+    UseMethod("add_locus")
+}
+
+##' @export
+##' @method add_locus gen
+add_locus.Genotype <- function(x, lname, aname, warn=TRUE){
+    if(lname %in% names(x)){
+        if(warn) warning("Locus already part of genotype.")
+        return(x)
+    }
+    v <- numeric(length(aname))
+    names(v) <- aname
+    x[[lname]] <- v
+    x
+}
+
+
+##' @export
+##' @method add_locus gen
+add_locus.gen <- function(x, lname, aname, warn=TRUE){
+   lapply(x, add_locus, lname=lname, aname=aname,warn=warn)
+}
+
+
 get_ploidy <- function(x){
     UseMethod("get_ploidy")
 }
@@ -144,17 +174,60 @@ get_ploidy.gen <- function(x){
 
 ##' @method c gen
 ##' @export
-c.gen <- function(..., dropLoci=FALSE){
+c.gen <- function(..., lociAction=c("extend","keep","drop")){
+    lociAction <- match.arg(lociAction)
     x <- list(...)
+    if(length(x) == 1)
+        return(x[[1]])   
     pop <- do.call("c", lapply(x, function(y) attr(y,"population")))
+    nms <- do.call("c", lapply(x, names))
+    if(any(sapply(x,function(y) !is.null(attr(y,"true_population"))))){
+        tpop <- do.call("c", lapply(x, function(y){
+            if(is.null(attr(y,"true_population"))){
+                return(rep(NA,length(y)))
+            }
+            attr(y,"true_population")
+        }))
+    }else{
+        tpop <- NULL
+    }
     res <- do.call("c",lapply(x,unclass))
     class(res) <- "gen"
     attr(res,"population") <- pop
+    attr(res,"true_population") <- tpop
     ## attr(res,"alleleNames") <- attr(x[[1]],"alleleNames")
-    ## otherA <- setdiff(unique(sapply(x,function(y)names(attributes(y)))),c("dim","dimnames","class","population","alleleNames"))
-    ## for(aa in otherA){
-    ##     attr(res,aa) <- lapply(x,function(y) attr(y,aa))
-    ## }
+    otherA <- setdiff(unique(sapply(x,function(y)names(attributes(y)))),c("class","population","true_population","names"))
+    if(length(otherA) > 0)
+        for(aa in otherA){
+            attr(res,aa) <- lapply(x,function(y) attr(y,aa))
+        }
+    if(lociAction == "drop"){
+        loci2use <- Reduce(intersect,lapply(res,names))
+        res <- res[,,loci2use]
+        attr(res,"true_population") <- tpop       
+    }else if(lociAction == "extend"){
+        loci2use <- Reduce(union,lapply(res,names))
+        alleleNames <- lapply(loci2use,function(ll) unique(unlist(lapply(res,function(x) names(x[[ll]])))))
+        res <- lapply(res, function(xx){
+            newloci <- match(setdiff(loci2use,names(xx)),loci2use)
+            for(i in newloci){
+                xx <- add_locus(xx,loci2use[i],alleleNames[[i]])
+            }
+            xx
+        })
+        class(res) <- "gen"
+        attr(res,"population") <- pop
+        attr(res,"true_population") <- tpop
+        ## attr(res,"alleleNames") <- attr(x[[1]],"alleleNames")
+        res <- res[,,loci2use]
+        attr(res,"true_population") <- tpop
+        otherA <- setdiff(unique(sapply(x,function(y)names(attributes(y)))),c("class","population","true_population","names"))
+        if(length(otherA) > 0)
+            for(aa in otherA){
+                attr(res,aa) <- lapply(x,function(y) attr(y,aa))
+            }
+    }
+    names(res) <- nms
     res
 }
 
@@ -174,6 +247,8 @@ c.gen <- function(..., dropLoci=FALSE){
         y <- unclass(x)[i]
         class(y) <- c("gen")
         attr(y,"population") <- attr(x,"population")[i]
+        if(!is.null(attr(x,"true_population")))
+            attr(y,"true_population") <- attr(x,"true_population")[i]
         return(y)
     }
     if(!missing(j) && missing(k))
@@ -184,6 +259,8 @@ c.gen <- function(..., dropLoci=FALSE){
         r <- (lapply(x[i],function(y) y[j,k]))
     class(r) <- c("gen")
     attr(r,"population") <- attr(x,"population")[i]
+    if(!is.null(attr(x,"true_population")))
+        attr(r,"true_population") <- attr(x,"true_population")[i]
     r
 }
 
@@ -197,6 +274,7 @@ c.gen <- function(..., dropLoci=FALSE){
 ##' @author Christoffer Moesgaard Albertsen
 ##' @export
 read_gen <- function(f, pop.names, sort.loci = FALSE, sort.individuals = FALSE, NAlleleKeep = NA){
+    ## TODO: Move to C file (?)
     l <- readLines(f, warn = FALSE)
     l <- l[!grepl("^[[:space:]]*$",l)]
     l <- gsub("[[:space:]]+"," ",l)
@@ -263,9 +341,46 @@ read_gen <- function(f, pop.names, sort.loci = FALSE, sort.individuals = FALSE, 
     res
 }
 
-write.gen <- function(x, file){
+to_txt <- function(x, ...){
+    UseMethod("to_txt")
+}
 
+#' @export
+to_txt.Genotype <- function(x, name="", ...){
+    paste0(name,", ", paste(sapply(x,function(y){ v <- tail(c(0,0,rep(c(1,2),times=y)),2); sprintf("%03d%03d",v[1],v[2]) }), collapse = " "))
+}
 
+#' @export
+to_txt.gen <- function(x, ...){
+    nm <- names(x)
+    if(is.null(nm))
+        nm <- sprintf(sprintf("ID%%0%dd",ceiling(log10(length(x)))),seq_along(x))
+    do.call(c,lapply(seq_along(x),function(i) to_txt(x[[i]],nm[i])))
+}
+
+#' @export
+to_txt.list <- function(x, ...){
+    ## Make sure they have the same size
+    x2 <- do.call(c,x)
+    xL <- split(x2, rep(seq_along(x), times = sapply(x,length)))
+    r <- unname(do.call(c,lapply(xL, function(y) c("POP",to_txt(y)))))
+    attr(r, "loci") <- names(x2[[1]])
+    attr(r,"population") <- names(x)
+    r
+}
+
+##' @export
+write_gen <- function(x, file, info = "", ...){
+    if(is(x,"gen"))
+        x <- list(x)
+    v <- to_txt(x)
+    if(!is.null(attr(v,"population")))
+        info <- paste0(info,ifelse(info=="","","; "),"Populations: ",paste(attr(v,"population"),collapse=", "))
+    cat(info,"\n", file = file)
+    cat(attr(v,"loci"), file = file, sep = "\n", append = TRUE)
+    cat(v, file = file, sep = "\n", append = TRUE)
+}
+    
 ## toGen <- function(am, file, P, info = ""){
 ##     if(!is.list(am))
 ##         am <- list(am)
@@ -282,4 +397,4 @@ write.gen <- function(x, file){
 ## }
 
     
-}
+

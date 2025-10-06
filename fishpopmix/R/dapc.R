@@ -28,6 +28,8 @@ gen2PCA <- function(x, alleleMeans, skipFirst = TRUE){
 ##' @export
 pca <- function(genotypes, nPC = Inf, skipFirst = TRUE){
     A2 <- gen2PCA(genotypes, skipFirst = skipFirst)
+    allMissing <- apply(A2,2,function(x) all(x==0))
+    A2 <- A2[,!allMissing]
     CC <- scale(A2,TRUE,TRUE)
     ss <- svd(CC)
     loadings <- ss$v[,seq_len(pmin(nPC,ncol(ss$v)))]

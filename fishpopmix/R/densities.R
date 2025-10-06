@@ -1,3 +1,4 @@
+##' @importFrom RTMBconvenience lgamma
 dmultinomGen <- function(x, size, prob, log) {
     ## Modified from from RTMB::dmultinom, which modified from stats::dmultinom
     K <- length(prob)
@@ -7,12 +8,13 @@ dmultinomGen <- function(x, size, prob, log) {
     prob <- prob / s
     if (missing(size))
         size <- sum(x)
-    r <- lgamma(size + 1) + sum(x * log(prob) - lgamma(x + 1))
+    r <- RTMBconvenience::lgamma(size + 1) + sum(x * log(prob) - RTMBconvenience::lgamma(x + 1))
     if (log)
         r
     else exp(r)
 }
 
+##' @importFrom RTMBconvenience safe_apply
 rConwayMaxwellMultinomial <- function(n, size, p, nu){
     p <- p / sum(p)
     possible <- do.call(rbind,nexcom(size,length(p)))
@@ -25,13 +27,14 @@ rConwayMaxwellMultinomial <- function(n, size, p, nu){
         (gamma(size+1) / prod(gamma(k+1)))^nu * prod(p^k)
 
     }
-    v2 <- sapply(safe_apply(possible,1, getOne, log = TRUE),exp)
+    v2 <- sapply(RTMBconvenience::safe_apply(possible,1, getOne, log = TRUE),exp)
     i <- sample(seq_len(nrow(possible)),n,prob = v2, replace = TRUE)
     res <- possible[i,]
     unname(res)
     t(res)
 }
 
+##' @importFrom RTMBconvenience safe_apply logspace_add lgamma
 dConwayMaxwellMultinomial <- function(x, size, p, nu, log = FALSE){
     p <- p / sum(p)
     possible <- do.call(rbind,nexcom(size,length(p)))
@@ -39,12 +42,12 @@ dConwayMaxwellMultinomial <- function(x, size, p, nu, log = FALSE){
     ## possible <- possible[rowSums(possible)==size,]
     getOne <- function(k, log = FALSE){
         if(log){
-            return(nu * (lgamma(size+1) - sum(lgamma(k+1))) + sum(k * log(p)))
+            return(nu * (RTMBconvenience::lgamma(size+1) - sum(RTMBconvenience::lgamma(k+1))) + sum(k * log(p)))
         }
         (gamma(size+1) / prod(gamma(k+1)))^nu * prod(p^k)
 
     }
-    v2 <- Reduce(logspace_add,safe_apply(possible,1, getOne, log = TRUE))
+    v2 <- Reduce(RTMBconvenience::logspace_add,RTMBconvenience::safe_apply(possible,1, getOne, log = TRUE))
     v1 <- getOne(x, TRUE)
     if(log)
         return(v1 - v2)
@@ -57,8 +60,9 @@ rDirichletMultinomial <- function(n, size, p, alpha, log = FALSE){
     apply(p0,2, function(pp) rmultinom(1,size,pp))
 }
     
+##' @importFrom RTMBconvenience lgamma
 dDirichletMultinomial <- function(x, size, p, alpha, log = FALSE){
-    r <- lgamma(alpha) + lgamma(size + 1) - lgamma(size + alpha) + Reduce("+",lgamma(x+p*alpha)-lgamma(p*alpha)-lgamma(x+1))
+    r <- RTMBconvenience::lgamma(alpha) + RTMBconvenience::lgamma(size + 1) - RTMBconvenience::lgamma(size + alpha) + Reduce("+",RTMBconvenience::lgamma(x+p*alpha)-RTMBconvenience::lgamma(p*alpha)-RTMBconvenience::lgamma(x+1))
     if(!log)
         return(exp(r))
     r

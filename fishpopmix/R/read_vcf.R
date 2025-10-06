@@ -6,6 +6,7 @@ read_vcf <- function(file, n = 10000, simplified = TRUE, pooled = FALSE){
     ## Non-pooled -> GT gives genotype
     ## Should extract allele names
     ## Convert to gen (pooled = FALSE) class or alleleFrequencyList (pooled=TRUE)
+    ## Move to C file
     f <- base::file(file)
     open(f)
 

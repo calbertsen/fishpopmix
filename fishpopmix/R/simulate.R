@@ -1,6 +1,7 @@
+##' @importFrom stats simulate
 ##' @method simulate baseline_fit
 ##' @export
-simulate.baseline_fit <- function(object, nsim, seed = NULL, mixture, sample.name = "mixture", ploidy = 2){
+simulate.baseline_fit <- function(object, nsim, seed = NULL, mixture, sample.name = "mixture", ploidy = 2,...){
     afL <- object$alleleFrequencies$Populations
     nuL <- object$alleleNu
     simIndi <- function(s) {
@@ -12,7 +13,7 @@ simulate.baseline_fit <- function(object, nsim, seed = NULL, mixture, sample.nam
                 a <- object$rGeno(p,nuL[s,l], ploidy)
             }
             names(a) <- names(p)
-            a
+            as.vector(a)
         })
         names(r) <- names(afL[[s]])
         class(r) <- "Genotype"
@@ -34,7 +35,7 @@ simulate.baseline_fit <- function(object, nsim, seed = NULL, mixture, sample.nam
 ## TODO: option to add missingness
 ##' @method simulate alleleFrequencyList
 ##' @export
-simulate.alleleFrequencyList <- function(object, nsim, seed = NULL, mixture, sample.name = "mixture", ploidy = 2){
+simulate.alleleFrequencyList <- function(object, nsim, seed = NULL, mixture, sample.name = "mixture", ploidy = 2,...){
     afL <- object$Populations
     simIndi <- function(s) {
         r <- lapply(seq_along(afL[[s]]),function(l){
@@ -45,7 +46,7 @@ simulate.alleleFrequencyList <- function(object, nsim, seed = NULL, mixture, sam
                 a <- rmultinom(1,ploidy,p)
             }
             names(a) <- names(p)
-            a
+            as.vector(a)
         })
         names(r) <- names(afL[[s]])
         class(r) <- "Genotype"

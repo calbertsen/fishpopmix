@@ -14,7 +14,9 @@ Copyright: Technical University of Denmark
 Depends: R, RTMB
 Imports: RTMB,
 	 TMB,
-	 Matrix
+	 Matrix,
+	 RTMBconvenience,
+	 jpeg, png, tiff
 LinkingTo: RcppEigen,
 	   TMB
 URL: https://github.com/calbertsen/fishpopmix
@@ -22,4 +24,4 @@ LazyData: TRUE
 Encoding: UTF-8
 BugReports: https://github.com/calbertsen/fishpopmix/issues
 ByteCompile: false
-RoxygenNote: 7.2.3
+RoxygenNote: 7.3.2
