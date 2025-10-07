@@ -2,6 +2,7 @@
 
 S3method(`[[`,Genotype)
 S3method(`[[`,gen)
+S3method(`[[`,genotype_distance)
 S3method(`[`,Genotype)
 S3method(`[`,gen)
 S3method(add_locus,gen)

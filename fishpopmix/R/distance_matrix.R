@@ -111,20 +111,20 @@ genotype_distance_Theta <- function(alleleFrequencies){
             h2 <- attr(Y[[l]],"heterozygote")[-1]
             p1 <- as.numeric(X[[l]])[-1]
             p2 <- as.numeric(Y[[l]])[-1]
-            if(any(is.na(p1)) || any(is.na(p1)))
+            if(any(is.na(p1)) || any(is.na(p2)))
                 return(NA)
             hbar <- (n1*h1 + n2*h2) / (r * nbar)
             pbar <- (n1 * p1 + n2 * p2) / (r * nbar)
             ssq <-  (n1 / nbar * (p1-pbar)^2 + n2 / nbar * (p2-pbar)^2) / (r -1)
             aa <- nbar/nc * (ssq - (1/(nbar-1)) * (pbar*(1-pbar) - (r-1)/r * ssq - hbar/4))
-            sum(pmax(0,aa))
+            sum(pmax(0,aa), na.rm=TRUE)
         })
         denom <- (sapply(seq_along(X), function(l) {
             h1 <- attr(X[[l]],"heterozygote")[-1]
             h2 <- attr(Y[[l]],"heterozygote")[-1]
             p1 <- as.numeric(X[[l]])[-1]
             p2 <- as.numeric(Y[[l]])[-1]
-            if(any(is.na(p1)) || any(is.na(p1)))
+            if(any(is.na(p1)) || any(is.na(p2)))
                 return(NA)
             hbar <- (n1*h1 + n2*h2) / (r * nbar)
             pbar <- (n1 * p1 + n2 * p2) / (r * nbar)
@@ -134,7 +134,7 @@ genotype_distance_Theta <- function(alleleFrequencies){
             cc <- hbar/2
             sum(pmax(0,aa), na.rm=TRUE) + sum(pmax(0,bb), na.rm=TRUE) + sum(pmax(0,cc), na.rm=TRUE)
         }))
-        sum(numer) / sum(denom)
+        sum(numer, na.rm=TRUE) / sum(denom, na.rm=TRUE)
     }))
     attr(D, "population") <- names(AL)    
     attr(D,"type") <- expression(theta)
@@ -553,4 +553,17 @@ print.genotype_distance <- function(x,...){
     xx <- format(unclass(x2), digits = 2, justify = "right")
     nn <- max(nchar(xx))
     print.table(tab,digits = 2, zero.print = paste(rep("-",nn),collapse=""))
+}
+
+
+##' @method `[[` genotype_distance
+##' @export
+`[[.genotype_distance` <- function(x,i,...){
+    if(missing(i))
+        return(x)
+    x2 <- x[i,i,drop=FALSE]
+    attr(x2, "population") <- attr(x, "population")[i]
+    attr(x2,"type") <- attr(x,"type")
+    class(x2) <- "genotype_distance"
+    x2
 }
